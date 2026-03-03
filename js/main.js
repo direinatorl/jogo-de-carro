@@ -54,10 +54,24 @@ class Car {
         this.maxHealth = 100;
         this.cooldown = 0;
         this.shootRate = 20;
+
+        // Race Progress
+        this.laps = 0;
+        this.checkpointIndex = 0;
+        this.progress = 0; // Total points visited
+        this.finished = false;
     }
 
     update(controls, track, projectiles) {
+        if (this.finished) {
+            this.speed *= 0.95;
+            this.x += Math.cos(this.angle) * this.speed;
+            this.y += Math.sin(this.angle) * this.speed;
+            return;
+        }
+
         if (this.isPlayer) {
+            // ... (rest of update)
             if (controls.forward) this.speed += this.accel;
             if (controls.reverse) this.speed -= this.accel;
 
@@ -90,6 +104,32 @@ class Car {
 
         this.x += Math.cos(this.angle) * this.speed;
         this.y += Math.sin(this.angle) * this.speed;
+
+        // Track Progress
+        if (track) {
+            this.trackProgress(track);
+        }
+    }
+
+    trackProgress(track) {
+        const nextIdx = (this.checkpointIndex + 1) % track.points.length;
+        const target = track.points[nextIdx];
+        const dist = Math.hypot(this.x - target.x, this.y - target.y);
+
+        if (dist < 150) {
+            this.checkpointIndex = nextIdx;
+            this.progress++;
+            if (nextIdx === 0) {
+                this.laps++;
+                if (this.isPlayer) {
+                    document.getElementById('current-lap').innerText = Math.min(this.laps + 1, 3);
+                }
+                if (this.laps >= 3) {
+                    this.finished = true;
+                    onRaceFinish(this);
+                }
+            }
+        }
     }
 
     shoot(projectiles) {
@@ -254,8 +294,67 @@ const backBtn = document.getElementById('back-to-menu-btn');
 let player;
 let track;
 let opponents = [];
-const controls = { forward: false, reverse: false, left: false, right: false };
+let projectiles = [];
+let money = 0;
+const controls = { forward: false, reverse: false, left: false, right: false, shoot: false };
 let gameState = 'MENU'; // MENU, RACING, GARAGE, RESULTS
+
+function startRace() {
+    console.log("Corrida iniciada!");
+    track.generate();
+    projectiles = [];
+
+    player.x = track.points[0].x;
+    player.y = track.points[0].y;
+    player.angle = Math.atan2(track.points[1].y - track.points[0].y, track.points[1].x - track.points[0].x);
+    player.speed = 0;
+    player.health = 100;
+    player.laps = 0;
+    player.checkpointIndex = 0;
+    player.progress = 0;
+    player.finished = false;
+
+    document.getElementById('current-lap').innerText = '1';
+
+    opponents.forEach((opp, i) => {
+        const p = track.points[0];
+        opp.x = p.x + (i + 1) * 20;
+        opp.y = p.y + (i + 1) * 20;
+        opp.angle = player.angle;
+        opp.speed = 0;
+        opp.targetIndex = 1;
+        opp.health = 100;
+        opp.laps = 0;
+        opp.checkpointIndex = 0;
+        opp.progress = 0;
+        opp.finished = false;
+    });
+}
+
+function render() {
+    // ...
+    if (gameState === 'RACING') {
+        // ...
+        // Calculation Position
+        const leaderboard = [player, ...opponents].sort((a, b) => b.progress - a.progress);
+        const playerPos = leaderboard.indexOf(player) + 1;
+        document.getElementById('current-pos').innerText = playerPos;
+    }
+}
+
+function onRaceFinish(car) {
+    if (car.isPlayer) {
+        const leaderboard = [player, ...opponents].sort((a, b) => b.progress - a.progress);
+        const pos = leaderboard.indexOf(player) + 1;
+        const reward = [1000, 500, 250, 100, 50][pos - 1] || 20;
+        money += reward;
+
+        setTimeout(() => {
+            alert(`FIM DE CORRIDA! POSIÇÃO: ${pos}º - RECOMPENSA: $${reward}`);
+            setGameState('MENU');
+        }, 1000);
+    }
+}
 
 function init() {
     setupEventListeners();
@@ -286,6 +385,7 @@ function setupEventListeners() {
         if (e.key === 'ArrowDown' || e.key === 's') controls.reverse = true;
         if (e.key === 'ArrowLeft' || e.key === 'a') controls.left = true;
         if (e.key === 'ArrowRight' || e.key === 'd') controls.right = true;
+        if (e.key === ' ' || e.key === 'f') controls.shoot = true;
     });
 
     window.addEventListener('keyup', (e) => {
@@ -293,6 +393,7 @@ function setupEventListeners() {
         if (e.key === 'ArrowDown' || e.key === 's') controls.reverse = false;
         if (e.key === 'ArrowLeft' || e.key === 'a') controls.left = false;
         if (e.key === 'ArrowRight' || e.key === 'd') controls.right = false;
+        if (e.key === ' ' || e.key === 'f') controls.shoot = false;
     });
 
     startBtn.addEventListener('click', () => {
@@ -333,11 +434,13 @@ function setGameState(state) {
 function startRace() {
     console.log("Corrida iniciada!");
     track.generate();
+    projectiles = [];
 
     player.x = track.points[0].x;
     player.y = track.points[0].y;
     player.angle = 0;
     player.speed = 0;
+    player.health = 100;
 
     opponents.forEach((opp, i) => {
         const p = track.points[0];
@@ -365,20 +468,53 @@ function render() {
         track.draw(ctx);
 
         // Update & Draw Player
-        player.update(controls, track);
+        player.update(controls, track, projectiles);
         player.draw(ctx);
 
         // Update & Draw Opponents
         opponents.forEach(opp => {
-            opp.update(null, track);
+            opp.update(null, track, projectiles);
             opp.draw(ctx);
         });
 
-        // Update HUD (example)
+        // Update & Draw Projectiles
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+            const p = projectiles[i];
+            p.update();
+            p.draw(ctx);
+
+            // Collision with cars
+            checkProjectileCollision(p, i);
+
+            if (p.life <= 0) {
+                projectiles.splice(i, 1);
+            }
+        }
+
+        // Update HUD
         document.getElementById('health-fill').style.width = player.health + '%';
+        if (player.health <= 0) {
+            alert("VOCÊ FOI DESTRUÍDO!");
+            setGameState('MENU');
+        }
     }
 
     requestAnimationFrame(render);
+}
+
+function checkProjectileCollision(p, index) {
+    const allCars = [player, ...opponents];
+    for (let car of allCars) {
+        if (car === p.owner) continue;
+
+        const dist = Math.hypot(p.x - car.x, p.y - car.y);
+        if (dist < 20) {
+            car.health -= p.damage;
+            car.speed *= 0.8; // Impact slows down
+            projectiles.splice(index, 1);
+            break;
+        }
+    }
 }
 
 init();
