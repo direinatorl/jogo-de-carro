@@ -290,7 +290,7 @@ const startBtn = document.getElementById('start-race-btn');
 const garageBtn = document.getElementById('garage-btn');
 const backBtn = document.getElementById('back-to-menu-btn');
 
-// Game Instances
+// Game State
 let player;
 let track;
 let opponents = [];
@@ -298,63 +298,6 @@ let projectiles = [];
 let money = 0;
 const controls = { forward: false, reverse: false, left: false, right: false, shoot: false };
 let gameState = 'MENU'; // MENU, RACING, GARAGE, RESULTS
-
-function startRace() {
-    console.log("Corrida iniciada!");
-    track.generate();
-    projectiles = [];
-
-    player.x = track.points[0].x;
-    player.y = track.points[0].y;
-    player.angle = Math.atan2(track.points[1].y - track.points[0].y, track.points[1].x - track.points[0].x);
-    player.speed = 0;
-    player.health = 100;
-    player.laps = 0;
-    player.checkpointIndex = 0;
-    player.progress = 0;
-    player.finished = false;
-
-    document.getElementById('current-lap').innerText = '1';
-
-    opponents.forEach((opp, i) => {
-        const p = track.points[0];
-        opp.x = p.x + (i + 1) * 20;
-        opp.y = p.y + (i + 1) * 20;
-        opp.angle = player.angle;
-        opp.speed = 0;
-        opp.targetIndex = 1;
-        opp.health = 100;
-        opp.laps = 0;
-        opp.checkpointIndex = 0;
-        opp.progress = 0;
-        opp.finished = false;
-    });
-}
-
-function render() {
-    // ...
-    if (gameState === 'RACING') {
-        // ...
-        // Calculation Position
-        const leaderboard = [player, ...opponents].sort((a, b) => b.progress - a.progress);
-        const playerPos = leaderboard.indexOf(player) + 1;
-        document.getElementById('current-pos').innerText = playerPos;
-    }
-}
-
-function onRaceFinish(car) {
-    if (car.isPlayer) {
-        const leaderboard = [player, ...opponents].sort((a, b) => b.progress - a.progress);
-        const pos = leaderboard.indexOf(player) + 1;
-        const reward = [1000, 500, 250, 100, 50][pos - 1] || 20;
-        money += reward;
-
-        setTimeout(() => {
-            alert(`FIM DE CORRIDA! POSIÇÃO: ${pos}º - RECOMPENSA: $${reward}`);
-            setGameState('MENU');
-        }, 1000);
-    }
-}
 
 function init() {
     setupEventListeners();
@@ -365,7 +308,6 @@ function init() {
     player = new Car(track.points[0].x, track.points[0].y, '#ff0055', true);
 
     createOpponents();
-
     render();
 }
 
@@ -396,23 +338,14 @@ function setupEventListeners() {
         if (e.key === ' ' || e.key === 'f') controls.shoot = false;
     });
 
-    startBtn.addEventListener('click', () => {
-        setGameState('RACING');
-    });
-
-    garageBtn.addEventListener('click', () => {
-        setGameState('GARAGE');
-    });
-
-    backBtn.addEventListener('click', () => {
-        setGameState('MENU');
-    });
+    startBtn.addEventListener('click', () => setGameState('RACING'));
+    garageBtn.addEventListener('click', () => setGameState('GARAGE'));
+    backBtn.addEventListener('click', () => setGameState('MENU'));
 }
 
 function setGameState(state) {
     gameState = state;
 
-    // Toggle UI
     mainMenu.classList.add('hidden');
     garageScreen.classList.add('hidden');
     hud.classList.add('hidden');
@@ -423,6 +356,7 @@ function setGameState(state) {
             break;
         case 'GARAGE':
             garageScreen.classList.remove('hidden');
+            updateGarageUI();
             break;
         case 'RACING':
             hud.classList.remove('hidden');
@@ -436,21 +370,47 @@ function startRace() {
     track.generate();
     projectiles = [];
 
+    const startAngle = Math.atan2(track.points[1].y - track.points[0].y, track.points[1].x - track.points[0].x);
+
     player.x = track.points[0].x;
     player.y = track.points[0].y;
-    player.angle = 0;
+    player.angle = startAngle;
     player.speed = 0;
-    player.health = 100;
+    player.health = player.maxHealth;
+    player.laps = 0;
+    player.checkpointIndex = 0;
+    player.progress = 0;
+    player.finished = false;
+
+    document.getElementById('current-lap').innerText = '1';
 
     opponents.forEach((opp, i) => {
         const p = track.points[0];
-        opp.x = p.x + (i + 1) * 20;
-        opp.y = p.y + (i + 1) * 20;
-        opp.angle = 0;
+        opp.x = p.x + (Math.random() * 40 - 20);
+        opp.y = p.y + (Math.random() * 40 - 20);
+        opp.angle = startAngle;
         opp.speed = 0;
         opp.targetIndex = 1;
-        opp.health = 100;
+        opp.health = opp.maxHealth;
+        opp.laps = 0;
+        opp.checkpointIndex = 0;
+        opp.progress = 0;
+        opp.finished = false;
     });
+}
+
+function onRaceFinish(car) {
+    if (car.isPlayer) {
+        const leaderboard = [player, ...opponents].sort((a, b) => b.progress - a.progress);
+        const pos = leaderboard.indexOf(player) + 1;
+        const reward = [1000, 500, 250, 100, 50][pos - 1] || 20;
+        money += reward;
+
+        setTimeout(() => {
+            alert(`FIM DE CORRIDA! POSIÇÃO: ${pos}º - RECOMPENSA: $${reward}`);
+            setGameState('MENU');
+        }, 1000);
+    }
 }
 
 function resize() {
@@ -459,40 +419,34 @@ function resize() {
 }
 
 function render() {
-    // Clear
     ctx.fillStyle = '#0a0a0c';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (gameState === 'RACING') {
-        // Draw Track
         track.draw(ctx);
 
-        // Update & Draw Player
         player.update(controls, track, projectiles);
         player.draw(ctx);
 
-        // Update & Draw Opponents
         opponents.forEach(opp => {
             opp.update(null, track, projectiles);
             opp.draw(ctx);
         });
 
-        // Update & Draw Projectiles
         for (let i = projectiles.length - 1; i >= 0; i--) {
             const p = projectiles[i];
             p.update();
             p.draw(ctx);
-
-            // Collision with cars
             checkProjectileCollision(p, i);
-
-            if (p.life <= 0) {
-                projectiles.splice(i, 1);
-            }
+            if (p.life <= 0) projectiles.splice(i, 1);
         }
 
-        // Update HUD
-        document.getElementById('health-fill').style.width = player.health + '%';
+        // Leaderboard & HUD
+        const leaderboard = [player, ...opponents].sort((a, b) => b.progress - a.progress);
+        const playerPos = leaderboard.indexOf(player) + 1;
+        document.getElementById('current-pos').innerText = playerPos;
+        document.getElementById('health-fill').style.width = (player.health / player.maxHealth * 100) + '%';
+
         if (player.health <= 0) {
             alert("VOCÊ FOI DESTRUÍDO!");
             setGameState('MENU');
@@ -505,16 +459,58 @@ function render() {
 function checkProjectileCollision(p, index) {
     const allCars = [player, ...opponents];
     for (let car of allCars) {
-        if (car === p.owner) continue;
+        if (car === p.owner || car.finished) continue;
 
         const dist = Math.hypot(p.x - car.x, p.y - car.y);
         if (dist < 20) {
             car.health -= p.damage;
-            car.speed *= 0.8; // Impact slows down
+            car.speed *= 0.8;
             projectiles.splice(index, 1);
             break;
         }
     }
 }
+
+function updateGarageUI() {
+    const list = document.querySelector('.upgrades-list');
+    list.innerHTML = `
+        <div class="money-display">SALDO: $${money}</div>
+        <div class="upgrade-item">
+            <span>MOTOR (Velocidade)</span>
+            <button onclick="buyUpgrade('speed')">$500</button>
+        </div>
+        <div class="upgrade-item">
+            <span>BLINDAGEM (Vida)</span>
+            <button onclick="buyUpgrade('armor')">$400</button>
+        </div>
+        <div class="upgrade-item">
+            <span>ARMAMENTO (Dano)</span>
+            <button onclick="buyUpgrade('weapon')">$600</button>
+        </div>
+    `;
+}
+
+// Global scope for HTML onclick
+window.buyUpgrade = function (type) {
+    let cost = 0;
+    switch (type) {
+        case 'speed': cost = 500; break;
+        case 'armor': cost = 400; break;
+        case 'weapon': cost = 600; break;
+    }
+
+    if (money >= cost) {
+        money -= cost;
+        switch (type) {
+            case 'speed': player.maxSpeed += 1; player.accel += 0.05; break;
+            case 'armor': player.maxHealth += 50; player.health = player.maxHealth; break;
+            case 'weapon': /* Implement weapon damage increase in projectile */ break;
+        }
+        updateGarageUI();
+        alert("Upgrade comprado!");
+    } else {
+        alert("Dinheiro insuficiente!");
+    }
+};
 
 init();
