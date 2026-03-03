@@ -1,0 +1,384 @@
+/**
+ * Nitro Assault: Racing & Combat
+ * Game Engine
+ */
+
+// --- CLASSES ---
+
+class Projectile {
+    constructor(x, y, angle, owner) {
+        this.x = x;
+        this.y = y;
+        this.angle = angle;
+        this.speed = 12;
+        this.owner = owner;
+        this.life = 60; // Frames
+        this.damage = 10;
+    }
+
+    update() {
+        this.x += Math.cos(this.angle) * this.speed;
+        this.y += Math.sin(this.angle) * this.speed;
+        this.life--;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.fillStyle = '#fbff00';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#fbff00';
+        ctx.fillRect(-5, -2, 10, 4);
+        ctx.restore();
+    }
+}
+
+class Car {
+    constructor(x, y, color, isPlayer = false) {
+        this.x = x;
+        this.y = y;
+        this.angle = 0;
+        this.speed = 0;
+        this.accel = 0.2;
+        this.friction = 0.98;
+        this.maxSpeed = 8;
+        this.turnSpeed = 0.05;
+        this.color = color;
+        this.isPlayer = isPlayer;
+        this.width = 40;
+        this.height = 20;
+
+        // Stats
+        this.health = 100;
+        this.maxHealth = 100;
+        this.cooldown = 0;
+        this.shootRate = 20;
+    }
+
+    update(controls, track, projectiles) {
+        if (this.isPlayer) {
+            if (controls.forward) this.speed += this.accel;
+            if (controls.reverse) this.speed -= this.accel;
+
+            if (Math.abs(this.speed) > 0.1) {
+                const reverse = this.speed < 0 ? -1 : 1;
+                if (controls.left) this.angle -= this.turnSpeed * reverse;
+                if (controls.right) this.angle += this.turnSpeed * reverse;
+            }
+
+            if (controls.shoot && this.cooldown <= 0) {
+                this.shoot(projectiles);
+            }
+        } else if (track) {
+            // Simple AI: Follow track points
+            this.updateAI(track);
+
+            // AI shooting
+            if (Math.random() < 0.01 && this.cooldown <= 0) {
+                this.shoot(projectiles);
+            }
+        }
+
+        if (this.cooldown > 0) this.cooldown--;
+
+        // Apply physics
+        this.speed *= this.friction;
+        if (Math.abs(this.speed) > this.maxSpeed) {
+            this.speed = this.maxSpeed * (this.speed > 0 ? 1 : -1);
+        }
+
+        this.x += Math.cos(this.angle) * this.speed;
+        this.y += Math.sin(this.angle) * this.speed;
+    }
+
+    shoot(projectiles) {
+        const pX = this.x + Math.cos(this.angle) * (this.width / 2 + 10);
+        const pY = this.y + Math.sin(this.angle) * (this.width / 2 + 10);
+        projectiles.push(new Projectile(pX, pY, this.angle, this));
+        this.cooldown = this.shootRate;
+    }
+
+    updateAI(track) {
+        // Target next point in track
+        if (!this.targetIndex) this.targetIndex = 0;
+        const target = track.points[this.targetIndex];
+
+        const dist = Math.hypot(target.x - this.x, target.y - this.y);
+        if (dist < 50) {
+            this.targetIndex = (this.targetIndex + 1) % track.points.length;
+        }
+
+        const angleToTarget = Math.atan2(target.y - this.y, target.x - this.x);
+
+        // Soft steering towards target
+        let angleDiff = angleToTarget - this.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        if (angleDiff > 0.1) this.angle += this.turnSpeed * 0.8;
+        if (angleDiff < -0.1) this.angle -= this.turnSpeed * 0.8;
+
+        this.speed += this.accel * 0.6;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        // Body Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(-this.width / 2 + 2, -this.height / 2 + 2, this.width, this.height);
+
+        // Body
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+
+        // Cockpit (Neon look)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillRect(-2, -6, 12, 12);
+
+        // Headlights
+        ctx.fillStyle = '#fff';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#fff';
+        ctx.fillRect(this.width / 2 - 5, -this.height / 2 + 2, 5, 4);
+        ctx.fillRect(this.width / 2 - 5, this.height / 2 - 6, 5, 4);
+
+        ctx.restore();
+    }
+}
+
+class Track {
+    constructor(canvasWidth, canvasHeight) {
+        this.width = canvasWidth;
+        this.height = canvasHeight;
+        this.points = [];
+        this.roadWidth = 120;
+        this.generate();
+    }
+
+    generate() {
+        const centerX = this.width / 2;
+        const centerY = this.height / 2;
+        const radiusX = this.width * 0.35;
+        const radiusY = this.height * 0.35;
+        const numPoints = 20;
+        this.points = [];
+
+        for (let i = 0; i < numPoints; i++) {
+            const angle = (i / numPoints) * Math.PI * 2;
+            const drift = Math.random() * 80 - 40;
+            const x = centerX + Math.cos(angle) * (radiusX + drift);
+            const y = centerY + Math.sin(angle) * (radiusY + drift);
+            this.points.push({ x, y });
+        }
+    }
+
+    draw(ctx) {
+        if (this.points.length < 2) return;
+
+        // Draw Grass/Exterior
+        ctx.fillStyle = '#1a1a20';
+        ctx.fillRect(0, 0, this.width, this.height);
+
+        // Draw Road Outline
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = this.roadWidth + 10;
+        this.drawPath(ctx);
+
+        // Draw Main Road
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = this.roadWidth;
+        this.drawPath(ctx);
+
+        // Draw Center Lines
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([20, 20]);
+        this.drawPath(ctx);
+        ctx.setLineDash([]);
+
+        // Draw Start/Finish Line
+        this.drawStartLine(ctx);
+    }
+
+    drawPath(ctx) {
+        ctx.beginPath();
+        ctx.moveTo(this.points[0].x, this.points[0].y);
+        for (let i = 1; i <= this.points.length; i++) {
+            const p = this.points[i % this.points.length];
+            // Use quadratic curves for smoothness
+            const prev = this.points[(i - 1) % this.points.length];
+            const xc = (prev.x + p.x) / 2;
+            const yc = (prev.y + p.y) / 2;
+            ctx.quadraticCurveTo(prev.x, prev.y, xc, yc);
+        }
+        ctx.stroke();
+    }
+
+    drawStartLine(ctx) {
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+        ctx.save();
+        ctx.translate(p1.x, p1.y);
+        ctx.rotate(angle + Math.PI / 2);
+
+        ctx.fillStyle = '#fff';
+        // Checkered pattern
+        for (let i = -this.roadWidth / 2; i < this.roadWidth / 2; i += 10) {
+            ctx.fillStyle = (i / 10) % 2 === 0 ? '#fff' : '#000';
+            ctx.fillRect(i, -5, 10, 10);
+        }
+        ctx.restore();
+    }
+}
+
+// --- CORE ENGINE ---
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// UI Elements
+const mainMenu = document.getElementById('main-menu');
+const garageScreen = document.getElementById('garage-screen');
+const hud = document.getElementById('hud');
+const startBtn = document.getElementById('start-race-btn');
+const garageBtn = document.getElementById('garage-btn');
+const backBtn = document.getElementById('back-to-menu-btn');
+
+// Game Instances
+let player;
+let track;
+let opponents = [];
+const controls = { forward: false, reverse: false, left: false, right: false };
+let gameState = 'MENU'; // MENU, RACING, GARAGE, RESULTS
+
+function init() {
+    setupEventListeners();
+    resize();
+
+    // Create Instances
+    track = new Track(canvas.width, canvas.height);
+    player = new Car(track.points[0].x, track.points[0].y, '#ff0055', true);
+
+    createOpponents();
+
+    render();
+}
+
+function createOpponents() {
+    opponents = [];
+    const colors = ['#00f2ff', '#fbff00', '#00ff40', '#7a00ff'];
+    for (let i = 0; i < 4; i++) {
+        opponents.push(new Car(track.points[0].x, track.points[0].y, colors[i]));
+    }
+}
+
+function setupEventListeners() {
+    window.addEventListener('resize', resize);
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp' || e.key === 'w') controls.forward = true;
+        if (e.key === 'ArrowDown' || e.key === 's') controls.reverse = true;
+        if (e.key === 'ArrowLeft' || e.key === 'a') controls.left = true;
+        if (e.key === 'ArrowRight' || e.key === 'd') controls.right = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.key === 'ArrowUp' || e.key === 'w') controls.forward = false;
+        if (e.key === 'ArrowDown' || e.key === 's') controls.reverse = false;
+        if (e.key === 'ArrowLeft' || e.key === 'a') controls.left = false;
+        if (e.key === 'ArrowRight' || e.key === 'd') controls.right = false;
+    });
+
+    startBtn.addEventListener('click', () => {
+        setGameState('RACING');
+    });
+
+    garageBtn.addEventListener('click', () => {
+        setGameState('GARAGE');
+    });
+
+    backBtn.addEventListener('click', () => {
+        setGameState('MENU');
+    });
+}
+
+function setGameState(state) {
+    gameState = state;
+
+    // Toggle UI
+    mainMenu.classList.add('hidden');
+    garageScreen.classList.add('hidden');
+    hud.classList.add('hidden');
+
+    switch (state) {
+        case 'MENU':
+            mainMenu.classList.remove('hidden');
+            break;
+        case 'GARAGE':
+            garageScreen.classList.remove('hidden');
+            break;
+        case 'RACING':
+            hud.classList.remove('hidden');
+            startRace();
+            break;
+    }
+}
+
+function startRace() {
+    console.log("Corrida iniciada!");
+    track.generate();
+
+    player.x = track.points[0].x;
+    player.y = track.points[0].y;
+    player.angle = 0;
+    player.speed = 0;
+
+    opponents.forEach((opp, i) => {
+        const p = track.points[0];
+        opp.x = p.x + (i + 1) * 20;
+        opp.y = p.y + (i + 1) * 20;
+        opp.angle = 0;
+        opp.speed = 0;
+        opp.targetIndex = 1;
+        opp.health = 100;
+    });
+}
+
+function resize() {
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+}
+
+function render() {
+    // Clear
+    ctx.fillStyle = '#0a0a0c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === 'RACING') {
+        // Draw Track
+        track.draw(ctx);
+
+        // Update & Draw Player
+        player.update(controls, track);
+        player.draw(ctx);
+
+        // Update & Draw Opponents
+        opponents.forEach(opp => {
+            opp.update(null, track);
+            opp.draw(ctx);
+        });
+
+        // Update HUD (example)
+        document.getElementById('health-fill').style.width = player.health + '%';
+    }
+
+    requestAnimationFrame(render);
+}
+
+init();

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nitro Assault: Racing & Combat</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui-layer">
+            <!-- HUD -->
+            <div id="hud" class="hidden">
+                <div class="hud-top">
+                    <div class="lap-counter">VOLTA: <span id="current-lap">1</span>/3</div>
+                    <div class="position">POS: <span id="current-pos">1</span>/8</div>
+                </div>
+                <div class="hud-bottom">
+                    <div class="health-bar"><div id="health-fill"></div></div>
+                    <div class="weapon-status">READY</div>
+                </div>
+            </div>
+
+            <!-- Menus -->
+            <div id="main-menu" class="menu-screen">
+                <h1 class="glitch-text" data-text="NITRO ASSAULT">NITRO ASSAULT</h1>
+                <p class="subtitle">RACING & COMBAT</p>
+                <div class="menu-buttons">
+                    <button id="start-race-btn" class="primary-btn">INICIAR CORRIDA</button>
+                    <button id="garage-btn" class="secondary-btn">GARAGEM</button>
+                </div>
+            </div>
+
+            <div id="garage-screen" class="menu-screen hidden">
+                <h1>GARAGEM</h1>
+                <div class="garage-content">
+                    <div class="car-preview">
+                        <!-- Canvas or image for car preview -->
+                    </div>
+                    <div class="upgrades-list">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+                <button id="back-to-menu-btn" class="secondary-btn">VOLTAR</button>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
